@@ -12,7 +12,7 @@ WORKDIR /app
 # Copy requirements file and install dependencies
 COPY requirements.txt .
 RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --disable-pip-version-check -r requirements.txt
 
 USER user
 ENV PATH="/home/user/.local/bin:$PATH"
