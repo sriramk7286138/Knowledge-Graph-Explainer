@@ -21,4 +21,4 @@ ENV PATH="/home/user/.local/bin:$PATH"
 COPY --chown=user . .
 
 # Run FastAPI backend using Uvicorn (Render supplies a PORT variable; default to 7860)[cite: 2]
-CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-7860}"]
+CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-8080}"]
