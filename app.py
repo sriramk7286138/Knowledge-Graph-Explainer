@@ -1,548 +1,316 @@
+import os
 import re
-import json
 import threading
-import torch
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from llama_cpp import Llama
 
-from transformers import (
-    AutoTokenizer,
-    AutoModelForCausalLM
+
+# ==========================================
+# SETTINGS (can be changed with environment variables on Render)
+# ==========================================
+
+MODEL_FILE = os.environ.get("MODEL_FILE", "smollm2-360m-instruct-q4_k_m.gguf")
+MODEL_DIR = os.environ.get("MODEL_DIR", "/home/user/models")
+MODEL_PATH = os.path.join(MODEL_DIR, MODEL_FILE)
+
+N_CTX = int(os.environ.get("N_CTX", "768"))          # smaller = less RAM
+N_THREADS = int(os.environ.get("N_THREADS", "2"))
+MAX_SENTENCES = int(os.environ.get("MAX_SENTENCES", "5"))
+MAX_CHARS = int(os.environ.get("MAX_CHARS", "800"))
+MAX_SENTENCE_CHARS = 300
+
+print("Loading model:", MODEL_PATH)
+llm = Llama(
+    model_path=MODEL_PATH,
+    n_ctx=N_CTX,
+    n_threads=N_THREADS,
+    n_batch=128,          # small batches use less memory
+    use_mmap=True,
+    use_mlock=False,
+    verbose=False,
 )
+print("Model loaded.")
 
+app = FastAPI(title="Knowledge Graph Explorer")
+lock = threading.Lock()   # the model can only do one job at a time
 
-# ==========================================
-# MODEL CONFIGURATION
-# ==========================================
-
-MODEL_NAME = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
-
-# Load model only once when server starts
-print("Loading SmolLM2 tokenizer...")
-
-tokenizer = AutoTokenizer.from_pretrained(
-    MODEL_NAME
-)
-
-print("Loading SmolLM2 model...")
-
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_NAME,
-    torch_dtype="auto",
-    device_map="auto"
-)
-
-model.eval()
-
-print("SmolLM2 loaded successfully!")
-
-
-# ==========================================
-# FASTAPI
-# ==========================================
-
-app = FastAPI(
-    title="Knowledge Graph Extraction",
-    version="1.0"
-)
-
-MAX_SENTENCES = 5
-MAX_CHARS = 800
-
-generation_lock = threading.Lock()
-
-
-# ==========================================
-# REQUEST MODEL
-# ==========================================
 
 class Query(BaseModel):
     text: str
 
 
 # ==========================================
-# SENTENCE SPLITTING
+# PROMPT (the "instructions" we give the model)
 # ==========================================
 
-def split_sentences(text: str):
+SYSTEM = (
+    "You extract knowledge-graph facts from text. "
+    "Write one fact per line in this format: "
+    "HEAD | RELATION | TAIL | HEAD_TYPE | TAIL_TYPE. "
+    "Types are PER (person), ORG (organisation), LOC (place), NUM (date or number), MISC (other). "
+    "If the sentence uses a pronoun such as he, she, it, they, his, her or its, "
+    "replace it with the real name from KNOWN ENTITIES. "
+    "Use short relation words. Output only the fact lines, or NONE if there are no facts."
+)
 
-    parts = re.split(
-        r"(?<=[.!?])\s+",
-        text.strip()
-    )
+FEW_SHOT = [
+    ("user", "KNOWN ENTITIES: none\nSENTENCE: Marie Curie was born in Warsaw in 1867.\nFACTS:"),
+    ("assistant", "Marie Curie | born in | Warsaw | PER | LOC\nMarie Curie | born in | 1867 | PER | NUM"),
+    ("user", "KNOWN ENTITIES: Marie Curie (PER); Warsaw (LOC)\nSENTENCE: She won the Nobel Prize in Physics.\nFACTS:"),
+    ("assistant", "Marie Curie | won | Nobel Prize in Physics | PER | MISC"),
+]
 
-    return [
-        p.strip()
-        for p in parts
-        if p.strip()
+
+def chatml(messages):
+    """SmolLM2 and Qwen both understand this 'chat' text format."""
+    text = ""
+    for role, content in messages:
+        text += f"<|im_start|>{role}\n{content}<|im_end|>\n"
+    return text + "<|im_start|>assistant\n"
+
+
+def ask_model(sentence, known):
+    entities = "; ".join(
+        f"{name} ({etype})" for name, etype in list(known.items())[-6:] if etype != "NUM"
+    ) or "none"
+
+    messages = [("system", SYSTEM)] + FEW_SHOT + [
+        ("user", f"KNOWN ENTITIES: {entities}\nSENTENCE: {sentence}\nFACTS:")
     ]
 
-
-# ==========================================
-# EXTRACTION PROMPT
-# ==========================================
-
-def create_prompt(text):
-
-    return f"""
-You are an intelligent knowledge graph extraction system.
-
-Read the complete document carefully.
-
-Extract entities and factual relationships from
-the entire document.
-
-IMPORTANT INSTRUCTIONS:
-
-1. Identify all important entities.
-2. Identify relationships between entities.
-3. Discover relationship labels automatically.
-4. Do not use predefined relationship categories.
-5. Resolve pronouns such as he, she, it, they,
-   his, her and the company using document context.
-6. Extract relationships across different sentences.
-7. Replace pronouns with their actual entity names.
-8. Use the original entity names consistently.
-9. Do not invent relationships.
-10. Avoid duplicate triples.
-11. Extract only facts supported by the document.
-
-Return ONLY valid JSON.
-
-Use this exact structure:
-
-{{
-    "entities": [
-        {{
-            "name": "Elon Musk",
-            "type": "PERSON"
-        }}
-    ],
-    "triples": [
-        {{
-            "head": "Elon Musk",
-            "type": "founded",
-            "tail": "SpaceX",
-            "sentence_index": 1,
-            "evidence": "Elon Musk founded SpaceX."
-        }}
-    ]
-}}
-
-DOCUMENT:
-
-{text}
-
-JSON:
-"""
-
-
-# ==========================================
-# MODEL GENERATION
-# ==========================================
-
-def generate_response(text):
-
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are an expert document-level "
-                "open information extraction system. "
-                "Return valid JSON only."
-            )
-        },
-        {
-            "role": "user",
-            "content": create_prompt(text)
-        }
-    ]
-
-    formatted_prompt = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True
-    )
-
-    inputs = tokenizer(
-        formatted_prompt,
-        return_tensors="pt"
-    )
-
-    input_device = model.get_input_embeddings().weight.device
-
-    inputs = {
-        key: value.to(input_device)
-        for key, value in inputs.items()
-    }
-
-    with generation_lock:
-
-        with torch.inference_mode():
-
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=1000,
-                do_sample=False,
-                repetition_penalty=1.05,
-                pad_token_id=tokenizer.eos_token_id
-            )
-
-    generated_tokens = outputs[
-        0,
-        inputs["input_ids"].shape[1]:
-    ]
-
-    raw = tokenizer.decode(
-        generated_tokens,
-        skip_special_tokens=True
-    )
-
-    return raw.strip()
-
-
-# ==========================================
-# JSON PARSER
-# ==========================================
-
-def parse_json(raw):
-
-    raw = raw.strip()
-
-    raw = re.sub(
-        r"^```(?:json)?\s*",
-        "",
-        raw
-    )
-
-    raw = re.sub(
-        r"\s*```$",
-        "",
-        raw
-    )
-
-    start = raw.find("{")
-    end = raw.rfind("}")
-
-    if start == -1 or end == -1:
-        raise ValueError("Model did not return valid JSON.")
-
-    return json.loads(
-        raw[start:end + 1]
-    )
-
-
-# ==========================================
-# ENTITY TYPE
-# ==========================================
-
-def entity_type(name: str, entities):
-
-    n = name.lower().strip()
-
-    for e in entities:
-
-        if e["name"].lower().strip() == n:
-            return e["type"]
-
-    if any(ch.isdigit() for ch in n):
-        return "NUM"
-
-    for e in entities:
-
-        t = e["name"].lower().strip()
-
-        if n in t or t in n:
-            return e["type"]
-
-    return "OTHER"
-
-
-# ==========================================
-# CLEAN ENTITIES
-# ==========================================
-
-def clean_entities(entities):
-
-    unique = {}
-
-    for e in entities:
-
-        name = str(e.get("name", "")).strip()
-
-        if not name:
-            continue
-
-        key = name.lower()
-
-        if key not in unique:
-            raw_type = str(e.get("type", "OTHER")).upper()
-            if raw_type in ["COMPANY", "ORGANISATION", "ORGANIZATION", "ORG"]:
-                etype = "ORG"
-            elif raw_type in ["PERSON", "PER"]:
-                etype = "PER"
-            elif raw_type in ["LOCATION", "PLACE", "LOC"]:
-                etype = "LOC"
-            elif raw_type in ["DATE", "NUMBER", "NUM"]:
-                etype = "NUM"
-            elif raw_type in ["MISC"]:
-                etype = "MISC"
-            else:
-                etype = "OTHER"
-
-            unique[key] = {
-                "name": name,
-                "type": etype
-            }
-
-    return list(unique.values())
-
-
-# ==========================================
-# CLEAN TRIPLES
-# ==========================================
-
-def clean_triples(triples, entities, sentences):
-
-    all_triples = []
-    seen = set()
-
-    for t in triples:
-
-        head = str(t.get("head", "")).strip()
-        tail = str(t.get("tail", "")).strip()
-        relation = str(t.get("type", "")).strip()
-
-        if not head or not tail or not relation:
-            continue
-
-        if head.lower() == tail.lower():
-            continue
-
-        key = (
-            head.lower(),
-            relation.lower(),
-            tail.lower()
+    with lock:
+        out = llm(
+            chatml(messages),
+            max_tokens=120,
+            temperature=0.0,
+            repeat_penalty=1.0,
+            stop=["<|im_end|>", "\n\n"],
         )
-
-        if key in seen:
-            continue
-
-        seen.add(key)
-
-        idx = t.get("sentence_index")
-
-        if not isinstance(idx, int) or not (1 <= idx <= len(sentences)):
-            idx = None
-
-        evidence = str(
-            t.get("evidence", "")
-        ).strip()
-
-        # Preserve original response fields
-        all_triples.append({
-
-            "head": head,
-
-            "type": relation,
-
-            "tail": tail,
-
-            "head_type": entity_type(
-                head,
-                entities
-            ),
-
-            "tail_type": entity_type(
-                tail,
-                entities
-            ),
-
-            "sentence_index": idx,
-
-            "sentence": evidence
-
-        })
-
-    return all_triples
+    return out["choices"][0]["text"].strip()
 
 
 # ==========================================
-# HOME PAGE
+# HELPERS
+# ==========================================
+
+def split_sentences(text):
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    return [p.strip() for p in parts if p.strip()]
+
+
+def show_tokens(sentence):
+    """The pieces (tokens) the model sees, for the 'tokenization' step."""
+    ids = llm.tokenize(sentence.encode("utf-8"), add_bos=False, special=False)
+    tokens = []
+    for i in ids:
+        piece = llm.detokenize([i]).decode("utf-8", errors="ignore").strip()
+        if piece:
+            tokens.append(piece)
+    return tokens
+
+
+TYPE_MAP = {
+    "PER": "PER", "PERSON": "PER",
+    "ORG": "ORG", "ORGANIZATION": "ORG", "ORGANISATION": "ORG", "COMPANY": "ORG",
+    "LOC": "LOC", "LOCATION": "LOC", "PLACE": "LOC", "GPE": "LOC", "CITY": "LOC", "COUNTRY": "LOC",
+    "NUM": "NUM", "DATE": "NUM", "NUMBER": "NUM", "YEAR": "NUM", "TIME": "NUM",
+    "MISC": "MISC",
+}
+
+
+def norm_type(t):
+    return TYPE_MAP.get(str(t).strip().upper(), "OTHER")
+
+
+PERSON_PRONOUNS = {"he", "she", "him", "her", "his", "hers", "himself", "herself"}
+THING_PRONOUNS = {"it", "its", "they", "them", "their", "this", "that", "the company", "the firm"}
+
+
+def resolve_pronoun(name, known):
+    """Backup rule: replace he/she/it/they with the latest matching entity."""
+    low = name.lower().strip()
+    if low in PERSON_PRONOUNS:
+        wanted = ["PER"]
+    elif low in THING_PRONOUNS:
+        wanted = ["ORG", "LOC", "MISC", "OTHER"]
+    else:
+        return name
+    for k in reversed(list(known)):
+        if known[k] in wanted:
+            return k
+    return None   # could not resolve -> the fact will be dropped
+
+
+def canonical(name, known):
+    """Make the same thing always have the same name ("Musk" -> "Elon Musk")."""
+    n = re.sub(r"^(the|a|an)\s+", "", name.strip(), flags=re.I).strip() or name.strip()
+    low = n.lower()
+    for k in known:
+        if k.lower() == low:
+            return k
+    if len(n.split()) == 1:
+        for k in reversed(list(known)):
+            if low in k.lower().split():
+                return k
+    return n
+
+
+def fix_type(name, etype, known):
+    if name in known and known[name] != "OTHER":
+        return known[name]
+    if any(ch.isdigit() for ch in name):
+        return "NUM"
+    return etype
+
+
+def touch(known, name, etype):
+    """Remember an entity and mark it as the most recent one."""
+    old = known.pop(name, None)
+    if old and old != "OTHER" and etype == "OTHER":
+        etype = old
+    known[name] = etype
+
+
+def parse_facts(raw):
+    facts = []
+    for line in raw.splitlines():
+        line = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s+", "", line).strip()
+        if "|" not in line:
+            continue
+        parts = [p.strip(" .\"'") for p in line.split("|")]
+        if len(parts) < 3:
+            continue
+        head, rel, tail = parts[0], parts[1], parts[2]
+        head_type = parts[3] if len(parts) > 3 else ""
+        tail_type = parts[4] if len(parts) > 4 else ""
+        if not head or not rel or not tail:
+            continue
+        if head.lower() in ("head", "subject") or rel.lower() in ("relation", "relationship"):
+            continue   # the model copied the template by mistake
+        if max(len(head), len(rel), len(tail)) > 60:
+            continue
+        facts.append((head, rel, tail, head_type, tail_type))
+    return facts
+
+
+def memory_mb():
+    try:
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return round(int(line.split()[1]) / 1024)
+    except Exception:
+        pass
+    return None
+
+
+# ==========================================
+# ROUTES
 # ==========================================
 
 @app.get("/")
 def home():
+    return FileResponse("static/index.html")
 
-    return FileResponse(
-        "static/index.html"
-    )
-
-
-# ==========================================
-# HEALTH CHECK
-# ==========================================
 
 @app.get("/health")
 def health():
+    return {"status": "running", "model": MODEL_FILE, "memory_used_mb": memory_mb()}
 
-    return {
-        "status": "running",
-        "model": MODEL_NAME,
-        "device": str(model.device)
-    }
-
-
-# ==========================================
-# MAIN KNOWLEDGE GRAPH API
-# ==========================================
 
 @app.post("/api/build")
 def build_graph(q: Query):
-
     text = q.text.strip()
-
     sentences = split_sentences(text)
 
     if not sentences:
-
-        raise HTTPException(
-            status_code=400,
-            detail="Please type a sentence."
-        )
-
+        raise HTTPException(status_code=400, detail="Please type a sentence.")
     if len(sentences) > MAX_SENTENCES:
-
-        raise HTTPException(
-            status_code=400,
-            detail=f"Please use at most {MAX_SENTENCES} sentences."
-        )
-
+        raise HTTPException(status_code=400, detail=f"Please use at most {MAX_SENTENCES} sentences.")
     if len(text) > MAX_CHARS:
-
-        raise HTTPException(
-            status_code=400,
-            detail=f"Please keep it under {MAX_CHARS} characters."
-        )
+        raise HTTPException(status_code=400, detail=f"Please keep it under {MAX_CHARS} characters.")
+    if any(len(s) > MAX_SENTENCE_CHARS for s in sentences):
+        raise HTTPException(status_code=400, detail=f"Each sentence must be under {MAX_SENTENCE_CHARS} characters.")
 
     try:
-
-        # ==================================
-        # TOKENIZATION
-        # ==================================
-
+        known = {}            # entities remembered from earlier sentences
         results = []
+        all_triples = []
+        all_entities = {}
+        seen = set()
 
-        for idx, sentence in enumerate(
-            sentences,
-            start=1
-        ):
+        for idx, sentence in enumerate(sentences, start=1):
+            raw = ask_model(sentence, known)
+            sentence_entities = {}
 
-            tokens = tokenizer.tokenize(sentence)
+            for head, rel, tail, head_type, tail_type in parse_facts(raw):
+                head = resolve_pronoun(head, known)
+                tail = resolve_pronoun(tail, known)
+                if head is None or tail is None:
+                    continue
+
+                head = canonical(head, known)
+                tail = canonical(tail, known)
+                if head.lower() == tail.lower():
+                    continue
+
+                head_type = fix_type(head, norm_type(head_type), known)
+                tail_type = fix_type(tail, norm_type(tail_type), known)
+
+                key = (head.lower(), rel.lower(), tail.lower())
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                touch(known, head, head_type)
+                touch(known, tail, tail_type)
+                sentence_entities[head] = head_type
+                sentence_entities[tail] = tail_type
+                all_entities[head] = head_type
+                all_entities[tail] = tail_type
+
+                # Was a name worked out from earlier sentences?
+                low_sentence = sentence.lower()
+                missing = [n for n in (head, tail) if n.lower() not in low_sentence]
+                note = ""
+                if missing:
+                    note = (f'This sentence does not write "{missing[0]}" in full. '
+                            f"The AI worked it out from the earlier sentences.")
+
+                all_triples.append({
+                    "head": head,
+                    "type": rel,
+                    "tail": tail,
+                    "head_type": head_type,
+                    "tail_type": tail_type,
+                    "sentence_index": idx,
+                    "sentence": sentence,
+                    "note": note,
+                })
 
             results.append({
-
                 "index": idx,
-
                 "text": sentence,
-
-                "tokens": tokens,
-
-                "raw": "",
-
-                "entities": []
-
+                "tokens": show_tokens(sentence),
+                "raw": raw or "NONE",
+                "entities": [{"text": n, "type": t} for n, t in sentence_entities.items()],
             })
 
-
-        # ==================================
-        # DOCUMENT-LEVEL EXTRACTION
-        # ==================================
-
-        raw = generate_response(text)
-
-        parsed = parse_json(raw)
-
-
-        # ==================================
-        # ENTITY EXTRACTION
-        # ==================================
-
-        entities = clean_entities(
-            parsed.get("entities", [])
-        )
-
-
-        # ==================================
-        # RELATIONSHIP EXTRACTION
-        # ==================================
-
-        all_triples = clean_triples(
-            parsed.get("triples", []),
-            entities,
-            sentences
-        )
-
-
-        # ==================================
-        # SENTENCE RESULTS
-        # ==================================
-
-        for result in results:
-
-            result["raw"] = raw
-
-            result["entities"] = [
-
-                {
-                    "text": e["name"],
-                    "type": e["type"]
-                }
-
-                for e in entities
-
-                if e["name"].lower() in result["text"].lower()
-            ]
-
-
-        # ==================================
-        # FINAL RESPONSE
-        # ==================================
-
         return {
-
             "sentences": results,
-
             "triples": all_triples,
-
-            "entities": entities,
-
-            "total_entities": len(entities),
-
-            "total_relationships": len(all_triples)
-
+            "entities": [{"name": n, "type": t} for n, t in all_entities.items()],
+            "total_entities": len(all_entities),
+            "total_relationships": len(all_triples),
         }
 
     except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Extraction error: {str(e)}")
 
-        raise HTTPException(
-            status_code=500,
-            detail=f"Extraction error: {str(e)}"
-        )
-
-
-# ==========================================
-# APPLICATION START
-# ==========================================
 
 if __name__ == "__main__":
-
     import uvicorn
-
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=7860
-    )
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 7860)))
