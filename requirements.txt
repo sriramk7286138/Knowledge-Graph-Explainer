@@ -1,4 +1,6 @@
 fastapi
 uvicorn
-huggingface_hub
-llama-cpp-python
+transformers
+torch
+accelerate
+pydantic
