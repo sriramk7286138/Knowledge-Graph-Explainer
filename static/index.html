@@ -133,7 +133,7 @@
 
   <div class="step" id="s3">
     <h3><span class="badge">3</span>The AI model writes the facts</h3>
-    <p class="note">The model (SmolLM2) structures extracted facts and entities into valid JSON format.</p>
+    <p class="note">The model reads <b>one sentence at a time</b> and remembers the names from earlier sentences.  It writes each fact as one line:  <span class="m-t">subject</span> | <span class="m-s">relation</span> | <span class="m-o">object</span></p>
     <div id="s3out"></div>
   </div>
 
@@ -420,6 +420,12 @@ function whyTooltip(t) {
   p2.className = "tipwhy";
   p2.textContent = `The AI read sentence ${t.sentence_index} and saw that "${t.head}" (subject) and "${t.tail}" (object) are connected by the relation "${t.type}".`;
   box.appendChild(p2);
+  if (t.note) {
+    const p3 = document.createElement("p");
+    p3.className = "tipwhy";
+    p3.textContent = "🔗 " + t.note;
+    box.appendChild(p3);
+  }
   return box;
 }
 
@@ -464,7 +470,12 @@ function resetSteps() {
 }
 
 function highlightRaw(raw) {
-  return esc(raw);
+  if (!raw || raw === "NONE") return esc(raw || "NONE");
+  return raw.split("\n").map(line => {
+    const p = line.split("|").map(x => x.trim());
+    if (p.length < 3) return esc(line);
+    return `<span class="m-t">${esc(p[0])}</span> ➜ <span class="m-s">${esc(p[1])}</span> ➜ <span class="m-o">${esc(p[2])}</span>`;
+  }).join("<br>");
 }
 
 async function build() {
