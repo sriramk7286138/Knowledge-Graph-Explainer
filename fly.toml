@@ -1,0 +1,14 @@
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[services.http_checks]]
+  interval = "15s"
+  timeout = "10s"
+  grace_period = "45s"
+  method = "get"
+  path = "/"
+  protocol = "http"
