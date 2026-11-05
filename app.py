@@ -81,7 +81,6 @@ def build_graph(query: Query):
     if not text:
         raise HTTPException(status_code=400, detail="Text cannot be empty.")
 
-    # Split into sentences using simple regex
     raw_sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
     if not raw_sentences:
         raw_sentences = [text]
@@ -103,7 +102,6 @@ def build_graph(query: Query):
             if not line or line.upper() == "NONE":
                 continue
             
-            # Guard against prompt template echoes
             if "HEAD" in line.upper() and "RELATION" in line.upper():
                 continue
 
@@ -157,4 +155,4 @@ def build_graph(query: Query):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 7860)))
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
