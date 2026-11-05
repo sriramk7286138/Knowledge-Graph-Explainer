@@ -27,12 +27,10 @@
   .badge { display:inline-block; background:#4f46e5; color:#fff; border-radius:50%; width:28px; height:28px; text-align:center; line-height:28px; margin-right:8px; font-weight:700; }
   .step h3 { margin:0 0 6px; }
   .note { color:#64748b; font-size:.95rem; margin:4px 0 10px; }
+  .input-tip { background: #fef3c7; border-left: 4px solid #f59e0b; color: #92400e; padding: 10px 14px; border-radius: 6px; font-size: 0.9rem; margin-bottom: 10px; }
   .sentlabel { font-weight:600; color:#4338ca; margin:10px 0 2px; font-size:.9rem; }
   .chip { display:inline-block; background:#dbeafe; color:#1e40af; padding:4px 10px; margin:3px; border-radius:20px; font-family:monospace; animation: fade .3s ease; }
   .raw { background:#0f172a; color:#e2e8f0; padding:14px; border-radius:10px; font-family:monospace; line-height:2; overflow-x:auto; margin-bottom:8px; }
-  .m-t { background:#2563eb; color:#fff; padding:2px 6px; border-radius:4px; font-size:.8rem; }
-  .m-s { background:#ea580c; color:#fff; padding:2px 6px; border-radius:4px; font-size:.8rem; }
-  .m-o { background:#16a34a; color:#fff; padding:2px 6px; border-radius:4px; font-size:.8rem; }
   table { width:100%; border-collapse:collapse; }
   th, td { padding:10px; text-align:left; border-bottom:1px solid #e2e8f0; }
   th { background:#f1f5f9; }
@@ -47,7 +45,23 @@
   .loading { display:none; color:#4f46e5; margin-top:12px; font-weight:600; }
   footer { text-align:center; color:#94a3b8; padding:20px; font-size:.9rem; }
 
-  /* ---------- the animated story ---------- */
+  .construction-banner {
+    background: #e0e7ff;
+    border: 2px dashed #6366f1;
+    color: #3730a3;
+    padding: 12px 16px;
+    border-radius: 10px;
+    margin-bottom: 12px;
+    font-weight: 600;
+    text-align: center;
+    transition: all 0.3s ease;
+    animation: pulse-banner 1.5s infinite;
+  }
+  @keyframes pulse-banner {
+    0%, 100% { border-color: #6366f1; }
+    50% { border-color: #4f46e5; background: #c7d2fe; }
+  }
+
   #story { position:relative; overflow:hidden; background:#fcfcff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; }
   #storySent { min-height:58px; text-align:center; font-size:1.4rem; font-weight:600; transition:opacity .4s; padding-top:6px; }
   #storySent.fade { opacity:0; }
@@ -68,7 +82,6 @@
   .elabel { font-size:14px; fill:#475569; text-anchor:middle; dominant-baseline:central; opacity:0; transition:opacity .5s;
             paint-order:stroke; stroke:#fcfcff; stroke-width:6px; stroke-linejoin:round; }
 
-  /* Tooltip shown when hovering over an arrow */
   .vis-tooltip { max-width:320px; white-space:normal !important; background:#fff !important; border:2px solid #c7d2fe !important;
     border-radius:10px !important; padding:10px 12px !important; box-shadow:0 6px 20px rgba(0,0,0,.15) !important;
     font-family:system-ui, Arial, sans-serif !important; font-size:14px !important; color:#1e293b !important; }
@@ -87,7 +100,7 @@
 
 <main>
 
-<!-- ============ ANIMATED INTRO (no definitions, just watch) ============ -->
+<!-- ============ ANIMATED INTRO ============ -->
 <section>
   <h2>👀 Watch what happens</h2>
   <div id="story">
@@ -108,8 +121,12 @@
 
 <section>
   <h2>Now try it yourself!</h2>
-  <p>Type one or more sentences (up to 5). An AI model builds the graph step by step.
-     Facts from all sentences are <b>merged into one graph</b>.</p>
+  <p>Type one or more sentences. The Qwen AI model breaks them down step-by-step and merges them into a single graph.</p>
+  
+  <div class="input-tip">
+    💡 <b>Tip:</b> For best results, use proper capitalization for names, places, and organizations (e.g., "Sriram studies at Stanford University" instead of lowercase).
+  </div>
+
   <textarea id="sentence" rows="4">Elon Musk founded SpaceX in 2002. SpaceX is headquartered in Hawthorne. Elon Musk is the CEO of Tesla.</textarea>
   <div>
     <button class="ex" data-s="Albert Einstein was born in Ulm. Ulm is located in Germany. Albert Einstein developed the theory of relativity.">Einstein</button>
@@ -117,7 +134,7 @@
     <button class="ex" data-s="The Taj Mahal is located in Agra. The Taj Mahal was commissioned by Shah Jahan. Agra is a city in India.">Taj Mahal</button>
   </div>
   <button id="go">Build Knowledge Graph ✨</button>
-  <div class="loading" id="loading">⏳ The AI is reading your sentences... (the first request can take up to a minute)</div>
+  <div class="loading" id="loading">⏳ Qwen AI is reading your sentences... (the first request can take up to a minute)</div>
   <div class="error" id="error"></div>
 
   <div class="step" id="s1">
@@ -127,13 +144,13 @@
 
   <div class="step" id="s2">
     <h3><span class="badge">2</span>Tokenization: cutting each sentence into pieces</h3>
-    <p class="note">AI models cannot read whole sentences. They first break the text into small pieces called <b>tokens</b>.</p>
+    <p class="note">AI models cannot read whole sentences at once. They break text into small pieces called <b>tokens</b>.</p>
     <div id="s2out"></div>
   </div>
 
   <div class="step" id="s3">
-    <h3><span class="badge">3</span>The AI model writes the facts</h3>
-    <p class="note">The model reads <b>one sentence at a time</b> and remembers the names from earlier sentences.  It writes each fact as one line:  <span class="m-t">subject</span> | <span class="m-s">relation</span> | <span class="m-o">object</span></p>
+    <h3><span class="badge">3</span>The AI model extracts facts</h3>
+    <p class="note">Qwen reads the sentence structure and formats facts into clear semantic lines.</p>
     <div id="s3out"></div>
   </div>
 
@@ -146,54 +163,44 @@
   </div>
 
   <div class="step" id="s5">
-    <h3><span class="badge">5</span>What kind of thing is each one?</h3>
-    <p class="note">The AI model labels every name as a Person, Organisation, Place, or Number.</p>
+    <h3><span class="badge">5</span>Entity Classification</h3>
+    <p class="note">The system assigns categories (Person, Organisation, Place, etc.) to each entity.</p>
     <div id="s5out"></div>
   </div>
 
   <div class="step" id="s6">
-    <h3><span class="badge">6</span>The merged Knowledge Graph</h3>
-    <p class="note"><b>Hover over an arrow</b> to see "Why this fact?" and drag the nodes around.</p>
+    <h3><span class="badge">6</span>Constructing the Knowledge Graph</h3>
+    <p class="note">Watch step-by-step how nodes and relationships are added live to build the graph!</p>
+    
+    <div id="constructionBanner" class="construction-banner">Preparing graph canvas...</div>
+
     <div id="result" class="graphbox"></div>
     <div class="legend" id="resultLegend"></div>
   </div>
 </section>
 
 </main>
-<footer>Built with SmolLM2 from Hugging Face · vis-network · FastAPI</footer>
+<footer>Built with Qwen 2.5 and Transformers · vis-network · FastAPI</footer>
 
 <script>
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 const $ = id => document.getElementById(id);
 
-// ---------- node types and colours ----------
 const TYPES = {
-  PER:          {label:"Person",           bg:"#bfdbfe", border:"#2563eb"},
-  PERSON:       {label:"Person",           bg:"#bfdbfe", border:"#2563eb"},
-  ORG:          {label:"Organisation",     bg:"#fed7aa", border:"#ea580c"},
-  COMPANY:      {label:"Organisation",     bg:"#fed7aa", border:"#ea580c"},
-  ORGANIZATION: {label:"Organisation",     bg:"#fed7aa", border:"#ea580c"},
-  LOC:          {label:"Place",            bg:"#bbf7d0", border:"#16a34a"},
-  LOCATION:     {label:"Place",            bg:"#bbf7d0", border:"#16a34a"},
-  PLACE:        {label:"Place",            bg:"#bbf7d0", border:"#16a34a"},
-  MISC:         {label:"Other named thing",bg:"#e9d5ff", border:"#9333ea"},
-  NUM:          {label:"Date / Number",    bg:"#fef08a", border:"#ca8a04"},
-  NUMBER:       {label:"Date / Number",    bg:"#fef08a", border:"#ca8a04"},
-  DATE:         {label:"Date / Number",    bg:"#fef08a", border:"#ca8a04"},
-  OTHER:        {label:"Unknown type",     bg:"#e2e8f0", border:"#64748b"}
+  PER:   {label:"Person",           bg:"#bfdbfe", border:"#2563eb"},
+  ORG:   {label:"Organisation",     bg:"#fed7aa", border:"#ea580c"},
+  LOC:   {label:"Place",            bg:"#bbf7d0", border:"#16a34a"},
+  MISC:  {label:"Other named thing",bg:"#e9d5ff", border:"#9333ea"},
+  NUM:   {label:"Date / Number",    bg:"#fef08a", border:"#ca8a04"},
+  OTHER: {label:"Unknown type",     bg:"#e2e8f0", border:"#64748b"}
 };
 
 function renderLegend(el) {
-  const uniqueTypes = [TYPES.PER, TYPES.ORG, TYPES.LOC, TYPES.MISC, TYPES.NUM, TYPES.OTHER];
-  el.innerHTML = uniqueTypes.map(t =>
+  el.innerHTML = Object.values(TYPES).map(t =>
     `<span><i style="background:${t.bg};border-color:${t.border}"></i>${t.label}</span>`).join("");
 }
 renderLegend($("demoLegend"));
-
-/* =====================================================================
-   PART A: THE ANIMATED STORY
-   ===================================================================== */
 
 const NODES = {
   elon:   {label:"Elon Musk", type:"PER", x:100, y:150},
@@ -380,10 +387,6 @@ new IntersectionObserver(entries => {
 
 $("replay").addEventListener("click", () => { started = true; playStory(); });
 
-/* =====================================================================
-   PART B: THE INTERACTIVE BUILDER
-   ===================================================================== */
-
 function highlightSentence(sentence, head, tail) {
   const frag = document.createDocumentFragment();
   const low = sentence.toLowerCase();
@@ -420,12 +423,6 @@ function whyTooltip(t) {
   p2.className = "tipwhy";
   p2.textContent = `The AI read sentence ${t.sentence_index} and saw that "${t.head}" (subject) and "${t.tail}" (object) are connected by the relation "${t.type}".`;
   box.appendChild(p2);
-  if (t.note) {
-    const p3 = document.createElement("p");
-    p3.className = "tipwhy";
-    p3.textContent = "🔗 " + t.note;
-    box.appendChild(p3);
-  }
   return box;
 }
 
@@ -439,13 +436,13 @@ function makeGraph(el) {
     physics: { stabilization:false, barnesHut:{gravitationalConstant:-4000, springLength:160} },
     interaction: { hover:true, tooltipDelay:100 }
   };
-  new vis.Network(el, {nodes, edges}, options);
-  return {nodes, edges};
+  const network = new vis.Network(el, {nodes, edges}, options);
+  return {nodes, edges, network};
 }
 
 function addNode(g, name, typeKey) {
   const id = name.toLowerCase();
-  const st = TYPES[typeKey] || TYPES[typeKey?.toUpperCase()] || TYPES.OTHER;
+  const st = TYPES[typeKey] || TYPES.OTHER;
   const color = {background:st.bg, border:st.border, highlight:{background:st.bg, border:"#111827"}, hover:{background:st.bg, border:"#111827"}};
   const existing = g.nodes.get(id);
   if (!existing) {
@@ -469,15 +466,6 @@ function resetSteps() {
   $("error").style.display = "none";
 }
 
-function highlightRaw(raw) {
-  if (!raw || raw === "NONE") return esc(raw || "NONE");
-  return raw.split("\n").map(line => {
-    const p = line.split("|").map(x => x.trim());
-    if (p.length < 3) return esc(line);
-    return `<span class="m-t">${esc(p[0])}</span> ➜ <span class="m-s">${esc(p[1])}</span> ➜ <span class="m-o">${esc(p[2])}</span>`;
-  }).join("<br>");
-}
-
 async function build() {
   const text = $("sentence").value.trim();
   if (!text) return;
@@ -498,13 +486,11 @@ async function build() {
     const data = await res.json();
     $("loading").style.display = "none";
 
-    // Step 1: sentences
     $("s1out").innerHTML = data.sentences
       .map(s => `<div><span style="color:#4f46e5">${s.index}.</span> ${esc(s.text)}</div>`).join("");
     $("s1").classList.add("show");
     await sleep(900);
 
-    // Step 2: tokens
     $("s2out").innerHTML = "";
     $("s2").classList.add("show");
     for (const s of data.sentences) {
@@ -524,17 +510,15 @@ async function build() {
     }
     await sleep(900);
 
-    // Step 3: raw model output
     $("s3out").innerHTML = data.sentences.map(s =>
-      `<div class="sentlabel">Sentence ${s.index}</div><div class="raw">${highlightRaw(s.raw)}</div>`).join("");
+      `<div class="sentlabel">Sentence ${s.index}</div><div class="raw">${esc(s.raw)}</div>`).join("");
     $("s3").classList.add("show");
     await sleep(1500);
 
-    // Step 4: triples table
     $("s4out").innerHTML = "";
     $("s4").classList.add("show");
     if (data.triples.length === 0) {
-      $("s4out").innerHTML = '<tr><td colspan="4">No facts found. Try sentences with people, places or organisations.</td></tr>';
+      $("s4out").innerHTML = '<tr><td colspan="4">No facts found. Try sentences with proper names, places or organisations.</td></tr>';
       return;
     }
     for (const t of data.triples) {
@@ -545,7 +529,6 @@ async function build() {
     }
     await sleep(800);
 
-    // Step 5: entity types
     $("s5out").innerHTML = "";
     $("s5").classList.add("show");
     for (const s of data.sentences) {
@@ -559,7 +542,7 @@ async function build() {
         box.innerHTML = '<span class="note">No named things found.</span>';
       }
       for (const e of s.entities) {
-        const st = TYPES[e.type] || TYPES[e.type?.toUpperCase()] || TYPES.OTHER;
+        const st = TYPES[e.type] || TYPES.OTHER;
         const span = document.createElement("span");
         span.className = "ent";
         span.style.background = st.bg;
@@ -574,15 +557,28 @@ async function build() {
     }
     await sleep(800);
 
-    // Step 6: the merged graph
     $("s6").classList.add("show");
     renderLegend($("resultLegend"));
     $("result").innerHTML = "";
     const g = makeGraph($("result"));
-    for (const t of data.triples) {
-      addTriple(g, t);
-      await sleep(1000);
+    
+    if (data.triples.length === 0) {
+      $("constructionBanner").textContent = "No relations found to construct graph.";
+    } else {
+      for (let i = 0; i < data.triples.length; i++) {
+        const t = data.triples[i];
+        $("constructionBanner").innerHTML = `⚡ Building Fact ${i + 1} of ${data.triples.length}: <b>${esc(t.head)}</b> ─── [${esc(t.type)}] ───► <b>${esc(t.tail)}</b>`;
+        
+        addTriple(g, t);
+
+        try {
+          g.network.focus(t.tail.toLowerCase(), { scale: 1.0, animation: { duration: 800, easingFunction: "easeInOutQuad" } });
+        } catch (err) {}
+        await sleep(1400);
+      }
+      $("constructionBanner").innerHTML = `✅ Knowledge Graph fully constructed!`;
     }
+
     $("s6").scrollIntoView({behavior:"smooth", block:"center"});
   } catch (e) {
     $("loading").style.display = "none";
