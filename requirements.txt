@@ -1,6 +1,3 @@
 fastapi
-uvicorn
-transformers
-torch
-accelerate
-pydantic
+uvicorn[standard]
+huggingface_hub
