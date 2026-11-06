@@ -1,595 +1,292 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Knowledge Graph Explorer</title>
-<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
-  * { box-sizing: border-box; }
-  body { margin:0; font-family: system-ui, Arial, sans-serif; background:#f8fafc; color:#1e293b; line-height:1.6; }
-  header { background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; padding:40px 20px; text-align:center; }
-  header h1 { margin:0 0 8px; font-size:2rem; }
-  header p { margin:0; opacity:.9; }
-  main { max-width:900px; margin:0 auto; padding:20px; }
-  section { background:#fff; border-radius:14px; padding:24px; margin:20px 0; box-shadow:0 2px 8px rgba(0,0,0,.06); }
-  h2 { margin-top:0; color:#4f46e5; }
-  .graphbox { height:380px; border:1px solid #e2e8f0; border-radius:10px; background:#fcfcff; }
-  textarea { width:100%; font-size:1.05rem; padding:12px; border:2px solid #c7d2fe; border-radius:10px; resize:vertical; font-family:inherit; }
-  button { cursor:pointer; border:none; border-radius:8px; padding:10px 18px; font-size:1rem; }
-  #go { background:#4f46e5; color:#fff; font-weight:600; margin-top:10px; }
-  #go:disabled { background:#a5b4fc; cursor:wait; }
-  #replay { background:#e0e7ff; color:#3730a3; font-weight:600; margin-top:10px; }
-  .ex { background:#e0e7ff; color:#3730a3; margin:6px 6px 0 0; font-size:.9rem; }
-  .step { display:none; margin-top:24px; animation: fade .6s ease; }
-  .step.show { display:block; }
-  @keyframes fade { from {opacity:0; transform:translateY(10px);} to {opacity:1; transform:none;} }
-  .badge { display:inline-block; background:#4f46e5; color:#fff; border-radius:50%; width:28px; height:28px; text-align:center; line-height:28px; margin-right:8px; font-weight:700; }
-  .step h3 { margin:0 0 6px; }
-  .note { color:#64748b; font-size:.95rem; margin:4px 0 10px; }
-  .input-tip { background: #fef3c7; border-left: 4px solid #f59e0b; color: #92400e; padding: 10px 14px; border-radius: 6px; font-size: 0.9rem; margin-bottom: 10px; }
-  .sentlabel { font-weight:600; color:#4338ca; margin:10px 0 2px; font-size:.9rem; }
-  .chip { display:inline-block; background:#dbeafe; color:#1e40af; padding:4px 10px; margin:3px; border-radius:20px; font-family:monospace; animation: fade .3s ease; }
-  .raw { background:#0f172a; color:#e2e8f0; padding:14px; border-radius:10px; font-family:monospace; line-height:2; overflow-x:auto; margin-bottom:8px; }
-  table { width:100%; border-collapse:collapse; }
-  th, td { padding:10px; text-align:left; border-bottom:1px solid #e2e8f0; }
-  th { background:#f1f5f9; }
-  td.s { color:#1d4ed8; font-weight:600; } td.r { color:#9a3412; font-weight:600; } td.o { color:#15803d; font-weight:600; }
-  td.f { color:#64748b; font-size:.9rem; }
-  .ent { display:inline-block; padding:4px 10px; margin:3px; border-radius:8px; border:2px solid; animation: fade .3s ease; }
-  .ent small { font-size:.7rem; font-weight:700; margin-left:6px; opacity:.8; text-transform:uppercase; }
-  .legend { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; font-size:.9rem; }
-  .legend span { display:inline-flex; align-items:center; gap:6px; }
-  .legend i { width:16px; height:16px; border-radius:4px; border:2px solid; display:inline-block; }
-  .error { color:#b91c1c; background:#fee2e2; padding:12px; border-radius:8px; display:none; margin-top:12px; }
-  .loading { display:none; color:#4f46e5; margin-top:12px; font-weight:600; }
-  footer { text-align:center; color:#94a3b8; padding:20px; font-size:.9rem; }
-
-  .construction-banner {
-    background: #e0e7ff;
-    border: 2px dashed #6366f1;
-    color: #3730a3;
-    padding: 12px 16px;
-    border-radius: 10px;
-    margin-bottom: 12px;
-    font-weight: 600;
-    text-align: center;
-    transition: all 0.3s ease;
-    animation: pulse-banner 1.5s infinite;
-  }
-  @keyframes pulse-banner {
-    0%, 100% { border-color: #6366f1; }
-    50% { border-color: #4f46e5; background: #c7d2fe; }
-  }
-
-  #story { position:relative; overflow:hidden; background:#fcfcff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; }
-  #storySent { min-height:58px; text-align:center; font-size:1.4rem; font-weight:600; transition:opacity .4s; padding-top:6px; }
-  #storySent.fade { opacity:0; }
-  .sw { display:inline-block; white-space:pre; opacity:0; border-radius:8px; padding:0 3px;
-        transition:opacity .35s, background .4s, box-shadow .4s, transform .3s; }
-  .sw.in { opacity:1; }
-  .sw.hl { transform:scale(1.1); }
-  .flyer { position:absolute; pointer-events:none; white-space:pre; border-radius:8px; padding:0 3px; font-size:1.4rem; font-weight:600;
-           z-index:5; transition:transform .9s cubic-bezier(.5,0,.2,1), opacity .35s ease .6s; }
-  #storySvg { width:100%; height:auto; display:block; }
-  .snode { opacity:0; transform-box:fill-box; transform-origin:center; transform:scale(.2);
-           transition:opacity .5s, transform .6s cubic-bezier(.3,1.7,.5,1); }
-  .snode.on { opacity:1; transform:scale(1); }
-  .snode.pulse { animation:pulse .8s ease; }
-  @keyframes pulse { 0%,100% { transform:scale(1); } 50% { transform:scale(1.3); } }
-  .sedge { stroke:#94a3b8; stroke-width:3; fill:none; }
-  .glow .sedge { stroke:#4f46e5; }
-  .elabel { font-size:14px; fill:#475569; text-anchor:middle; dominant-baseline:central; opacity:0; transition:opacity .5s;
-            paint-order:stroke; stroke:#fcfcff; stroke-width:6px; stroke-linejoin:round; }
-
-  .vis-tooltip { max-width:320px; white-space:normal !important; background:#fff !important; border:2px solid #c7d2fe !important;
-    border-radius:10px !important; padding:10px 12px !important; box-shadow:0 6px 20px rgba(0,0,0,.15) !important;
-    font-family:system-ui, Arial, sans-serif !important; font-size:14px !important; color:#1e293b !important; }
-  .tip p { margin:6px 0 0; }
-  .tipwhy { color:#475569; font-size:13px; }
-  .hl-s { background:#fed7aa; color:#9a3412; padding:0 4px; border-radius:4px; font-weight:600; }
-  .hl-o { background:#bbf7d0; color:#166534; padding:0 4px; border-radius:4px; font-weight:600; }
+:root{
+  --paper:#eef3ef; --grid:#d6e2dc; --ink:#1b2a35; --muted:#5d6f7b; --card:#ffffff; --line:#c3d2cb;
+  --doer:#e0457b; --action:#d99100; --receiver:#1a9e6f;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Bricolage Grotesque',system-ui,Segoe UI,Arial,sans-serif;color:var(--ink);
+  background:var(--paper);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:28px 28px}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:18px 22px 10px}
+h1{font-size:26px;font-weight:800;margin:0 18px 0 0;letter-spacing:-.5px}
+.inputrow{display:flex;gap:10px;flex:1;min-width:280px}
+textarea{flex:1;height:62px;border:2px solid var(--ink);border-radius:10px;padding:9px 11px;font:inherit;font-size:16px;background:var(--card);color:var(--ink);resize:vertical}
+button{font:inherit;font-weight:600;border:2px solid var(--ink);border-radius:10px;padding:9px 16px;background:var(--ink);color:#fff;cursor:pointer}
+button.alt{background:var(--card);color:var(--ink)}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible,textarea:focus-visible,input:focus-visible{outline:3px solid #3b82f6;outline-offset:2px}
+main{padding:0 22px 22px;display:grid;gap:10px}
+#controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+#stepInfo{font-weight:600;margin-right:auto}
+label.sp{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:14px}
+#sentencePanel{background:var(--card);border:2px solid var(--ink);border-radius:12px;padding:10px 16px;min-height:56px;font-size:19px;line-height:2.1}
+.sent{transition:opacity .6s}
+.mark{border-bottom:4px solid;border-radius:4px;padding:0 3px;margin:0 1px}
+.mark small{font-size:12px;margin-left:5px;font-weight:700}
+#caption{font-size:18px;font-weight:600;min-height:28px}
+#graph{width:100%;height:56vh;min-height:340px;background:rgba(255,255,255,.65);border:2px solid var(--ink);border-radius:12px}
+#legend{display:flex;flex-wrap:wrap;gap:14px;font-size:14px;color:var(--muted)}
+#legend span{display:flex;align-items:center;gap:6px}
+#legend i{width:14px;height:14px;border-radius:50%;border:2px solid var(--ink);display:inline-block}
+#tip{position:absolute;display:none;max-width:340px;background:var(--card);border:2px solid var(--ink);border-radius:10px;padding:10px 12px;font-size:15px;line-height:1.7;z-index:10;pointer-events:none;box-shadow:4px 4px 0 var(--ink)}
+.note{flex-basis:100%;margin:2px 0 0;font-size:14px;color:var(--muted)}
+.note b{color:var(--ink)}
+@media (prefers-reduced-motion:reduce){.sent{transition:none}}
 </style>
 </head>
 <body>
-
 <header>
-  <h1>🕸️ Knowledge Graph Explorer</h1>
-  <p>See how a computer turns sentences into connected knowledge</p>
+  <h1>Knowledge Graph Explorer</h1>
+  <div class="inputrow">
+    <textarea id="input" aria-label="Your sentences">Marie Curie was born in Warsaw. She discovered radium. She won the Nobel Prize in Physics.</textarea>
+    <button id="buildBtn">Build graph</button>
+  </div>
+  <p class="note"><b>Tip:</b> start every sentence with a capital letter and use full names, like this: “Sriram is a Student. Sriram Studies in College.”</p>
 </header>
-
 <main>
-
-<!-- ============ ANIMATED INTRO ============ -->
-<section>
-  <h2>👀 Watch what happens</h2>
-  <div id="story">
-    <div id="storySent"></div>
-    <svg id="storySvg" viewBox="0 0 700 310" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="#6366f1"/>
-        </marker>
-      </defs>
-      <g id="edgesG"></g>
-      <g id="nodesG"></g>
-    </svg>
+  <div id="controls">
+    <span id="stepInfo"></span>
+    <button id="nextBtn" class="alt" disabled>Next step</button>
+    <button id="autoBtn" class="alt" disabled>Auto play</button>
+    <label class="sp">Speed <input id="speed" type="range" min="0.5" max="2" step="0.25" value="1"></label>
   </div>
-  <div class="legend" id="demoLegend"></div>
-  <button id="replay">↻ Replay</button>
-</section>
-
-<section>
-  <h2>Now try it yourself!</h2>
-  <p>Type one or more sentences. The Qwen AI model breaks them down step-by-step and merges them into a single graph.</p>
-  
-  <div class="input-tip">
-    💡 <b>Tip:</b> For best results, use proper capitalization for names, places, and organizations (e.g., "Sriram studies at Stanford University" instead of lowercase).
-  </div>
-
-  <textarea id="sentence" rows="4">Elon Musk founded SpaceX in 2002. SpaceX is headquartered in Hawthorne. Elon Musk is the CEO of Tesla.</textarea>
-  <div>
-    <button class="ex" data-s="Albert Einstein was born in Ulm. Ulm is located in Germany. Albert Einstein developed the theory of relativity.">Einstein</button>
-    <button class="ex" data-s="Sundar Pichai is the CEO of Google. Google was founded by Larry Page and Sergey Brin. Google is headquartered in Mountain View.">Google</button>
-    <button class="ex" data-s="The Taj Mahal is located in Agra. The Taj Mahal was commissioned by Shah Jahan. Agra is a city in India.">Taj Mahal</button>
-  </div>
-  <button id="go">Build Knowledge Graph ✨</button>
-  <div class="loading" id="loading">⏳ Qwen AI is reading your sentences... (the first request can take up to a minute)</div>
-  <div class="error" id="error"></div>
-
-  <div class="step" id="s1">
-    <h3><span class="badge">1</span>The sentences</h3>
-    <div id="s1out" style="font-size:1.05rem;font-weight:600"></div>
-  </div>
-
-  <div class="step" id="s2">
-    <h3><span class="badge">2</span>Tokenization: cutting each sentence into pieces</h3>
-    <p class="note">AI models cannot read whole sentences at once. They break text into small pieces called <b>tokens</b>.</p>
-    <div id="s2out"></div>
-  </div>
-
-  <div class="step" id="s3">
-    <h3><span class="badge">3</span>The AI model extracts facts</h3>
-    <p class="note">Qwen reads the sentence structure and formats facts into clear semantic lines.</p>
-    <div id="s3out"></div>
-  </div>
-
-  <div class="step" id="s4">
-    <h3><span class="badge">4</span>Clean facts (triples)</h3>
-    <table>
-      <thead><tr><th>Subject</th><th>Relation</th><th>Object</th><th>From</th></tr></thead>
-      <tbody id="s4out"></tbody>
-    </table>
-  </div>
-
-  <div class="step" id="s5">
-    <h3><span class="badge">5</span>Entity Classification</h3>
-    <p class="note">The system assigns categories (Person, Organisation, Place, etc.) to each entity.</p>
-    <div id="s5out"></div>
-  </div>
-
-  <div class="step" id="s6">
-    <h3><span class="badge">6</span>Constructing the Knowledge Graph</h3>
-    <p class="note">Watch step-by-step how nodes and relationships are added live to build the graph!</p>
-    
-    <div id="constructionBanner" class="construction-banner">Preparing graph canvas...</div>
-
-    <div id="result" class="graphbox"></div>
-    <div class="legend" id="resultLegend"></div>
-  </div>
-</section>
-
+  <div id="sentencePanel" aria-live="polite"></div>
+  <div id="caption" aria-live="polite"></div>
+  <svg id="graph" role="img" aria-label="Knowledge graph">
+    <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1b2a35"/></marker></defs>
+    <g id="edges"></g><g id="nodes"></g>
+  </svg>
+  <div id="legend"></div>
 </main>
-<footer>Built with Qwen 2.5 and Transformers · vis-network · FastAPI</footer>
+<div id="tip"></div>
 
 <script>
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-const $ = id => document.getElementById(id);
+const COLORS={PER:'#ff8fab',ORG:'#ffc145',LOC:'#4fd1b5',MISC:'#b4a6ff',CONCEPT:'#79b8ff'};
+const NAMES={PER:'Person',ORG:'Organisation',LOC:'Place',MISC:'Other name',CONCEPT:'Idea or thing'};
+const DOER='#e0457b',ACTION='#d99100',RECEIVER='#1a9e6f';
+const R=42;
+const $=id=>document.getElementById(id);
+const gE=d3.select('#edges'),gN=d3.select('#nodes'),svg=d3.select('#graph');
+let data,steps=[],cur=0,busy=false,autoOn=false,runId=0,pos={},marks={},pairCount={};
 
-const TYPES = {
-  PER:   {label:"Person",           bg:"#bfdbfe", border:"#2563eb"},
-  ORG:   {label:"Organisation",     bg:"#fed7aa", border:"#ea580c"},
-  LOC:   {label:"Place",            bg:"#bbf7d0", border:"#16a34a"},
-  MISC:  {label:"Other named thing",bg:"#e9d5ff", border:"#9333ea"},
-  NUM:   {label:"Date / Number",    bg:"#fef08a", border:"#ca8a04"},
-  OTHER: {label:"Unknown type",     bg:"#e2e8f0", border:"#64748b"}
-};
+const speed=()=>parseFloat($('speed').value);
+async function wait(ms){const id=runId;await new Promise(r=>setTimeout(r,ms/speed()));if(id!==runId)throw 'cancel';}
+const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const mk=(sp,color,tag)=>sp?{start:sp[0],end:sp[1],color,tag}:null;
+const cap=t=>{$('caption').textContent=t;};
 
-function renderLegend(el) {
-  el.innerHTML = Object.values(TYPES).map(t =>
-    `<span><i style="background:${t.bg};border-color:${t.border}"></i>${t.label}</span>`).join("");
-}
-renderLegend($("demoLegend"));
-
-const NODES = {
-  elon:   {label:"Elon Musk", type:"PER", x:100, y:150},
-  spacex: {label:"SpaceX",    type:"ORG", x:340, y:150},
-  y2002:  {label:"2002",      type:"NUM", x:340, y:45},
-  haw:    {label:"Hawthorne", type:"LOC", x:590, y:150},
-  tesla:  {label:"Tesla",     type:"ORG", x:100, y:265}
-};
-for (const k in NODES) {
-  NODES[k].w = Math.max(84, NODES[k].label.length * 11 + 30);
-  NODES[k].h = 40;
-}
-
-const STORY = [
-  { parts: [["Elon Musk","elon"], [" founded "], ["SpaceX","spacex"], [" in "], ["2002","y2002"], ["."]],
-    edges: [["elon","spacex","founded"], ["spacex","y2002","started in"]] },
-  { parts: [["SpaceX","spacex"], [" is based in "], ["Hawthorne","haw"], ["."]],
-    edges: [["spacex","haw","based in"]] },
-  { parts: [["Elon Musk","elon"], [" is the CEO of "], ["Tesla","tesla"], ["."]],
-    edges: [["elon","tesla","CEO of"]] }
-];
-
-function svgEl(tag, attrs) {
-  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
-  for (const k in attrs) e.setAttribute(k, attrs[k]);
-  return e;
-}
-
-function resetStory() {
-  $("edgesG").innerHTML = "";
-  $("edgesG").classList.remove("glow");
-  $("nodesG").innerHTML = "";
-  $("storySent").innerHTML = "";
-  $("storySent").classList.remove("fade");
-  document.querySelectorAll(".flyer").forEach(f => f.remove());
-  for (const k in NODES) delete NODES[k].el;
-}
-
-function renderSentence(sent) {
-  const box = $("storySent");
-  box.classList.remove("fade");
-  box.innerHTML = "";
-  return sent.parts.map(p => {
-    const sp = document.createElement("span");
-    sp.className = "sw";
-    sp.textContent = p[0];
-    if (p[1]) sp.dataset.key = p[1];
-    box.appendChild(sp);
-    return sp;
-  });
-}
-
-function fly(wordEl, node, st) {
-  const stage = $("story").getBoundingClientRect();
-  const w = wordEl.getBoundingClientRect();
-  const sv = $("storySvg").getBoundingClientRect();
-  const k = sv.width / 700;
-  const tx = sv.left + node.x * k - stage.left;
-  const ty = sv.top + node.y * k - stage.top;
-  const left = w.left - stage.left, top = w.top - stage.top;
-  const c = document.createElement("div");
-  c.className = "flyer";
-  c.textContent = wordEl.textContent;
-  c.style.left = left + "px";
-  c.style.top = top + "px";
-  c.style.background = st.bg;
-  c.style.boxShadow = `0 0 0 2px ${st.border}`;
-  $("story").appendChild(c);
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    c.style.transform = `translate(${tx - left - w.width / 2}px, ${ty - top - w.height / 2}px) scale(.8)`;
-    c.style.opacity = 0;
-  }));
-  setTimeout(() => c.remove(), 1200);
-}
-
-function showNode(key) {
-  const n = NODES[key];
-  if (n.el) {
-    n.el.classList.remove("pulse");
-    void n.el.getBoundingClientRect();
-    n.el.classList.add("pulse");
-    setTimeout(() => n.el.classList.remove("pulse"), 900);
-    return;
+function renderSentence(text,ms){
+  ms=ms.filter(Boolean).sort((a,b)=>a.start-b.start);
+  let out='',p=0;
+  for(const m of ms){
+    if(m.start<p)continue;
+    out+=esc(text.slice(p,m.start));
+    out+=`<span class="mark" style="border-color:${m.color};background:${m.color}33">${esc(text.slice(m.start,m.end))}${m.tag?`<small style="color:${m.color}">${esc(m.tag)}</small>`:''}</span>`;
+    p=m.end;
   }
-  const st = TYPES[n.type];
-  const g = svgEl("g", {class: "snode"});
-  g.appendChild(svgEl("rect", {x: n.x - n.w/2, y: n.y - n.h/2, width: n.w, height: n.h, rx: 10,
-                               fill: st.bg, stroke: st.border, "stroke-width": 3}));
-  const t = svgEl("text", {x: n.x, y: n.y, "text-anchor": "middle", "dominant-baseline": "central",
-                           "font-size": 17, "font-weight": 600, fill: "#1e293b"});
-  t.textContent = n.label;
-  g.appendChild(t);
-  $("nodesG").appendChild(g);
-  n.el = g;
-  setTimeout(() => g.classList.add("on"), 30);
+  return out+esc(text.slice(p));
+}
+const setSent=(i,ms)=>{$('s'+i).innerHTML=renderSentence(data.sentences[i].text,ms);};
+const setRaw=(i,t,ms)=>{$('s'+i).innerHTML=renderSentence(t,ms);};
+const nodeText=id=>data.nodes.find(n=>n.id===id).text;
+
+function wrapText(s,max=11){
+  const lines=[];let line='';
+  for(const w of s.split(' ')){
+    if((line+' '+w).trim().length>max&&line){lines.push(line);line=w;}else line=(line+' '+w).trim();
+  }
+  if(line)lines.push(line);
+  if(lines.length>3){lines.length=3;lines[2]=lines[2].slice(0,max-1)+'…';}
+  return lines;
 }
 
-function clipPoint(A, B) {
-  const dx = B.x - A.x, dy = B.y - A.y;
-  const tx = dx !== 0 ? (A.w / 2) / Math.abs(dx) : Infinity;
-  const ty = dy !== 0 ? (A.h / 2) / Math.abs(dy) : Infinity;
-  const t = Math.min(tx, ty);
-  return {x: A.x + dx * t, y: A.y + dy * t};
+function computeLayout(){
+  const box=$('graph').getBoundingClientRect(),w=box.width,h=box.height;
+  svg.attr('viewBox',`0 0 ${w} ${h}`);
+  const nodes=data.nodes.map(n=>({id:n.id}));
+  const links=data.edges.map(e=>({source:e.source,target:e.target}));
+  const sim=d3.forceSimulation(nodes)
+    .force('link',d3.forceLink(links).id(d=>d.id).distance(Math.min(190,w/3)))
+    .force('charge',d3.forceManyBody().strength(-900))
+    .force('center',d3.forceCenter(w/2,h/2))
+    .force('collide',d3.forceCollide(R+34)).stop();
+  for(let i=0;i<350;i++)sim.tick();
+  pos={};
+  nodes.forEach(n=>{pos[n.id]={x:Math.max(R+12,Math.min(w-R-12,n.x)),y:Math.max(R+12,Math.min(h-R-12,n.y))};});
 }
 
-function drawEdge(a, b, label) {
-  const A = NODES[a], B = NODES[b];
-  const p1 = clipPoint(A, B), p2 = clipPoint(B, A);
-  const len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-  const line = svgEl("line", {x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, class: "sedge"});
-  line.style.strokeDasharray = len;
-  line.style.strokeDashoffset = len;
-  $("edgesG").appendChild(line);
-  void line.getBoundingClientRect();
-  line.style.transition = "stroke-dashoffset .9s ease, stroke .6s";
-  line.style.strokeDashoffset = 0;
-  setTimeout(() => line.setAttribute("marker-end", "url(#arrow)"), 900);
-
-  const txt = svgEl("text", {x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2, class: "elabel"});
-  txt.textContent = label;
-  $("edgesG").appendChild(txt);
-  setTimeout(() => { txt.style.opacity = 1; }, 600);
+function addNode(n){
+  const p=pos[n.id];
+  const g=gN.append('g').attr('transform',`translate(${p.x},${p.y})`);
+  g.append('circle').attr('r',0).attr('fill',COLORS[n.label]||COLORS.CONCEPT).attr('stroke','#1b2a35').attr('stroke-width',3)
+    .transition().duration(650/speed()).ease(d3.easeBackOut.overshoot(2)).attr('r',R);
+  const t=g.append('text').attr('text-anchor','middle').attr('fill','#1b2a35').attr('font-size',13).attr('font-weight',700).style('opacity',0);
+  const lines=wrapText(n.text);
+  lines.forEach((l,i)=>t.append('tspan').attr('x',0).attr('dy',i===0?`${0.35-(lines.length-1)*0.6}em`:'1.2em').text(l));
+  t.transition().delay(350/speed()).duration(300).style('opacity',1);
 }
 
-let runId = 0, inView = false, started = false;
+function drawEdge(e){
+  const a=pos[e.source],b=pos[e.target];
+  const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d;
+  const x1=a.x+ux*R,y1=a.y+uy*R,x2=b.x-ux*(R+7),y2=b.y-uy*(R+7);
+  const k=[e.source,e.target].sort().join('|');
+  const c=pairCount[k]=(pairCount[k]||0)+1;
+  const g=gE.append('g');
+  g.append('line').attr('x1',x1).attr('y1',y1).attr('x2',x1).attr('y2',y1)
+    .attr('stroke','#1b2a35').attr('stroke-width',3).attr('marker-end','url(#arrow)')
+    .transition().duration(900/speed()).ease(d3.easeCubicInOut).attr('x2',x2).attr('y2',y2);
+  g.append('text').attr('x',(x1+x2)/2).attr('y',(y1+y2)/2-9-(c-1)*17).attr('text-anchor','middle')
+    .attr('font-size',14).attr('font-weight',700).attr('fill','#1b2a35')
+    .attr('stroke','#eef3ef').attr('stroke-width',5).attr('paint-order','stroke').style('opacity',0).text(e.label)
+    .transition().delay(650/speed()).duration(350).style('opacity',1);
+  g.append('line').attr('x1',x1).attr('y1',y1).attr('x2',x2).attr('y2',y2)
+    .attr('stroke','transparent').attr('stroke-width',20).style('cursor','help')
+    .on('mouseenter',ev=>showTip(ev,e)).on('mousemove',moveTip).on('mouseleave',hideTip).on('click',ev=>showTip(ev,e));
+}
 
-async function playStory() {
-  const my = ++runId;
-  const w = ms => sleep(ms).then(() => { if (my !== runId) throw "cancel"; });
-  try {
-    resetStory();
-    await w(700);
+function showTip(ev,e){
+  const s=data.sentences[e.sentence],v=e.evidence,t=$('tip');
+  const part=sp=>esc(s.text.slice(sp[0],sp[1]));
+  t.innerHTML=`<b>Why this fact?</b><br>${renderSentence(s.text,[mk(v.subject,DOER,'doer'),mk(v.verb,ACTION,'action'),mk(v.object,RECEIVER,'receiver')])}<br>`+
+    `<span style="color:${DOER}">${part(v.subject)}</span> → <span style="color:${ACTION}">${esc(e.label)}</span> → <span style="color:${RECEIVER}">${part(v.object)}</span>`;
+  t.style.display='block';moveTip(ev);
+}
+function moveTip(ev){const t=$('tip');t.style.left=Math.min(ev.pageX+14,window.innerWidth-t.offsetWidth-10)+'px';t.style.top=(ev.pageY+14)+'px';}
+function hideTip(){$('tip').style.display='none';}
 
-    for (const sent of STORY) {
-      const spans = renderSentence(sent);
-      for (const s of spans) { s.classList.add("in"); await w(s.dataset.key ? 350 : 220); }
-      await w(500);
-
-      for (const s of spans) {
-        if (!s.dataset.key) continue;
-        const st = TYPES[NODES[s.dataset.key].type];
-        s.style.background = st.bg;
-        s.style.boxShadow = `0 0 0 2px ${st.border}`;
-        s.classList.add("hl");
-        await w(300);
+function buildSteps(){
+  steps=[];
+  steps.push({title:'Read the sentences',run:async()=>{
+    cap('First, the text is cut into separate sentences.');
+    for(let i=0;i<data.sentences.length;i++){$('s'+i).style.opacity=1;await wait(650);}
+  }});
+  if(data.sentences.some(s=>s.corefs.length)){
+    steps.push({title:'Link words like he, she, it',run:async()=>{
+      for(const s of data.sentences){
+        if(!s.corefs.length)continue;
+        setRaw(s.index,s.original||s.text,s.corefs.map(c=>mk([c.start,c.end],'#d99100','= '+c.refers_to)));
+        for(const c of s.corefs){cap(`“${c.word}” is just another name for “${c.refers_to}”.`);await wait(1300);}
+        marks[s.index]=s.corefs.map(c=>mk([c.new_start,c.new_end],'#d99100',''));
+        setSent(s.index,marks[s.index]);
+        cap('Now the sentence says exactly who does the action.');await wait(1200);
       }
-      await w(500);
-
-      for (const s of spans) {
-        if (!s.dataset.key) continue;
-        const node = NODES[s.dataset.key];
-        fly(s, node, TYPES[node.type]);
-        await w(650);
-        showNode(s.dataset.key);
-        await w(450);
+    }});
+  }
+  steps.push({title:'Find the things',run:async()=>{
+    for(const s of data.sentences){
+      for(const e of s.entities){
+        marks[s.index]=(marks[s.index]||[]).filter(m=>m.start!==e.start).concat(mk([e.start,e.end],COLORS[e.label]||COLORS.CONCEPT,NAMES[e.label]));
+        setSent(s.index,marks[s.index]);
+        cap(`The AI model reads the words and decides: “${e.text}” is a ${NAMES[e.label]}.`);
+        await wait(1100);
       }
-      await w(300);
-
-      for (const [a, b, label] of sent.edges) {
-        drawEdge(a, b, label);
-        await w(1400);
-      }
-      await w(700);
-
-      $("storySent").classList.add("fade");
-      await w(600);
     }
-
-    $("edgesG").classList.add("glow");
-    for (const k in NODES) { showNode(k); await w(280); }
-    await w(4000);
-
-    while (!inView) await w(500);
-    playStory();
-  } catch (e) {
-    if (e !== "cancel") console.error(e);
-  }
+    cap('Each highlighted name will become a circle. The same name in two sentences is ONE circle.');await wait(1000);
+  }});
+  steps.push({title:'Create the nodes',run:async()=>{
+    for(const n of data.nodes){addNode(n);cap(`New node: ${n.text}`);await wait(800);}
+  }});
+  steps.push({title:'Connect the nodes',run:async()=>{
+    for(const e of data.edges){
+      data.sentences.forEach((_,i)=>{$('s'+i).style.opacity=i===e.sentence?1:0.3;});
+      const v=e.evidence;
+      setSent(e.sentence,[mk(v.subject,DOER,'doer'),mk(v.verb,ACTION,'action'),mk(v.object,RECEIVER,'receiver')]);
+      cap(`${nodeText(e.source)}  —  ${e.label}  →  ${nodeText(e.target)}`);
+      await wait(1400);drawEdge(e);await wait(1200);
+      setSent(e.sentence,marks[e.sentence]||[]);
+    }
+    data.sentences.forEach((_,i)=>{$('s'+i).style.opacity=1;});
+  }});
+  steps.push({title:'The finished graph',run:async()=>{
+    cap(data.edges.length?'Done! Point at any arrow to see why that fact exists.':'No connections were found in this text.');
+  }});
 }
 
-new IntersectionObserver(entries => {
-  inView = entries[0].isIntersecting;
-  if (inView && !started) { started = true; playStory(); }
-}, {threshold: 0.4}).observe($("story"));
-
-$("replay").addEventListener("click", () => { started = true; playStory(); });
-
-function highlightSentence(sentence, head, tail) {
-  const frag = document.createDocumentFragment();
-  const low = sentence.toLowerCase();
-  const ranges = [];
-  [[head, "hl-s"], [tail, "hl-o"]].forEach(([word, cls]) => {
-    const i = low.indexOf(word.toLowerCase());
-    if (i >= 0) ranges.push({s:i, e:i + word.length, c:cls});
-  });
-  ranges.sort((a, b) => a.s - b.s);
-  let pos = 0;
-  for (const r of ranges) {
-    if (r.s < pos) continue;
-    frag.appendChild(document.createTextNode(sentence.slice(pos, r.s)));
-    const sp = document.createElement("span");
-    sp.className = r.c;
-    sp.textContent = sentence.slice(r.s, r.e);
-    frag.appendChild(sp);
-    pos = r.e;
-  }
-  frag.appendChild(document.createTextNode(sentence.slice(pos)));
-  return frag;
+function updateButtons(){
+  $('nextBtn').disabled=busy||autoOn||cur>=steps.length;
+  $('autoBtn').disabled=busy||autoOn||!steps.length;
+  $('autoBtn').textContent=steps.length&&cur>=steps.length?'Replay':'Auto play';
 }
 
-function whyTooltip(t) {
-  const box = document.createElement("div");
-  box.className = "tip";
-  const title = document.createElement("b");
-  title.textContent = "💡 Why this fact?";
-  box.appendChild(title);
-  const p1 = document.createElement("p");
-  p1.appendChild(highlightSentence(t.sentence, t.head, t.tail));
-  box.appendChild(p1);
-  const p2 = document.createElement("p");
-  p2.className = "tipwhy";
-  p2.textContent = `The AI read sentence ${t.sentence_index} and saw that "${t.head}" (subject) and "${t.tail}" (object) are connected by the relation "${t.type}".`;
-  box.appendChild(p2);
-  return box;
+function load(d){
+  runId++;data=d;cur=0;busy=false;autoOn=false;marks={};pairCount={};hideTip();
+  gE.selectAll('*').remove();gN.selectAll('*').remove();cap('');
+  $('sentencePanel').innerHTML='';
+  d.sentences.forEach((s,i)=>{const el=document.createElement('div');el.className='sent';el.id='s'+i;el.style.opacity=0;el.textContent=s.original||s.text;$('sentencePanel').appendChild(el);});
+  computeLayout();buildSteps();$('stepInfo').textContent='';updateButtons();
 }
 
-function makeGraph(el) {
-  const nodes = new vis.DataSet();
-  const edges = new vis.DataSet();
-  const options = {
-    nodes: { shape:"box", margin:10, font:{size:16}, borderWidth:2 },
-    edges: { arrows:"to", color:{color:"#94a3b8", highlight:"#4f46e5", hover:"#4f46e5"}, width:2, hoverWidth:2,
-             font:{size:13, align:"middle", background:"#ffffff"}, smooth:{type:"dynamic"} },
-    physics: { stabilization:false, barnesHut:{gravitationalConstant:-4000, springLength:160} },
-    interaction: { hover:true, tooltipDelay:100 }
+async function runNext(){
+  if(busy||cur>=steps.length)return;
+  busy=true;const id=runId;updateButtons();
+  try{
+    $('stepInfo').textContent=`Step ${cur+1} of ${steps.length}: ${steps[cur].title}`;
+    await steps[cur].run();cur++;
+  }catch(e){if(e!=='cancel')console.error(e);}
+  if(id===runId){busy=false;updateButtons();}
+}
+
+async function auto(){
+  if(autoOn||busy)return;
+  if(cur>=steps.length)load(data);
+  autoOn=true;const id=runId;updateButtons();
+  try{
+    while(cur<steps.length){await runNext();if(id!==runId)return;await wait(600);}
+  }catch(e){}
+  if(id===runId){autoOn=false;updateButtons();}
+}
+
+$('nextBtn').onclick=runNext;
+$('autoBtn').onclick=auto;
+$('buildBtn').onclick=async()=>{
+  const text=$('input').value.trim();if(!text)return;
+  $('buildBtn').disabled=true;
+  cap('The AI model is reading your text… (the first request can take up to a minute while the server wakes up)');
+  try{
+    const r=await fetch('/api/graph',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+    const d=await r.json();
+    if(!d.nodes||!d.nodes.length){cap('No names or things found. Try: Elon Musk founded SpaceX in 2002.');}
+    else{load(d);auto();}
+  }catch(err){cap('Something went wrong. Check your connection and press Build graph again.');}
+  $('buildBtn').disabled=false;
+};
+
+(function legend(){
+  $('legend').innerHTML=Object.keys(NAMES).map(k=>`<span><i style="background:${COLORS[k]}"></i>${NAMES[k]}</span>`).join('');
+})();
+
+/* Opening animation: a ready-made example plays by itself, so the page teaches before anyone types. */
+function demo(){
+  const O=['Marie Curie was born in Warsaw.','She discovered radium.','She won the Nobel Prize.'];
+  const R=['Marie Curie was born in Warsaw.','Marie Curie discovered radium.','Marie Curie won the Nobel Prize.'];
+  const f=(i,w)=>{const a=R[i].indexOf(w);return [a,a+w.length];};
+  const ent=(i,w,l)=>({text:w,label:l,start:f(i,w)[0],end:f(i,w)[1]});
+  const co=(i)=>({word:'She',start:0,end:3,new_start:0,new_end:11,refers_to:'Marie Curie'});
+  const ed=(s,t,l,i,a,b,c)=>({source:s,target:t,label:l,sentence:i,evidence:{subject:f(i,a),verb:f(i,b),object:f(i,c)}});
+  return {
+    sentences:[
+      {index:0,original:O[0],text:R[0],entities:[ent(0,'Marie Curie','PER'),ent(0,'Warsaw','LOC')],corefs:[]},
+      {index:1,original:O[1],text:R[1],entities:[ent(1,'Marie Curie','PER'),ent(1,'radium','CONCEPT')],corefs:[co(1)]},
+      {index:2,original:O[2],text:R[2],entities:[ent(2,'Marie Curie','PER'),ent(2,'Nobel Prize','MISC')],corefs:[co(2)]}],
+    nodes:[{id:'marie curie',text:'Marie Curie',label:'PER'},{id:'warsaw',text:'Warsaw',label:'LOC'},
+           {id:'radium',text:'radium',label:'CONCEPT'},{id:'nobel prize',text:'Nobel Prize',label:'MISC'}],
+    edges:[ed('marie curie','warsaw','born in',0,'Marie Curie','was born in','Warsaw'),
+           ed('marie curie','radium','discovered',1,'Marie Curie','discovered','radium'),
+           ed('marie curie','nobel prize','won',2,'Marie Curie','won','Nobel Prize')]
   };
-  const network = new vis.Network(el, {nodes, edges}, options);
-  return {nodes, edges, network};
 }
-
-function addNode(g, name, typeKey) {
-  const id = name.toLowerCase();
-  const st = TYPES[typeKey] || TYPES.OTHER;
-  const color = {background:st.bg, border:st.border, highlight:{background:st.bg, border:"#111827"}, hover:{background:st.bg, border:"#111827"}};
-  const existing = g.nodes.get(id);
-  if (!existing) {
-    g.nodes.add({id, label:name, color, title:st.label, typeKey});
-  } else if (existing.typeKey === "OTHER" && typeKey !== "OTHER") {
-    g.nodes.update({id, color, title:st.label, typeKey});
-  }
-}
-
-function addTriple(g, t) {
-  addNode(g, t.head, t.head_type);
-  addNode(g, t.tail, t.tail_type);
-  g.edges.add({from:t.head.toLowerCase(), to:t.tail.toLowerCase(), label:t.type, title:whyTooltip(t)});
-}
-
-document.querySelectorAll(".ex").forEach(b =>
-  b.addEventListener("click", () => { $("sentence").value = b.dataset.s; }));
-
-function resetSteps() {
-  ["s1","s2","s3","s4","s5","s6"].forEach(id => $(id).classList.remove("show"));
-  $("error").style.display = "none";
-}
-
-async function build() {
-  const text = $("sentence").value.trim();
-  if (!text) return;
-  resetSteps();
-  $("go").disabled = true;
-  $("loading").style.display = "block";
-
-  try {
-    const res = await fetch("/api/build", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({text})
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Something went wrong on the server.");
-    }
-    const data = await res.json();
-    $("loading").style.display = "none";
-
-    $("s1out").innerHTML = data.sentences
-      .map(s => `<div><span style="color:#4f46e5">${s.index}.</span> ${esc(s.text)}</div>`).join("");
-    $("s1").classList.add("show");
-    await sleep(900);
-
-    $("s2out").innerHTML = "";
-    $("s2").classList.add("show");
-    for (const s of data.sentences) {
-      const label = document.createElement("div");
-      label.className = "sentlabel";
-      label.textContent = `Sentence ${s.index}`;
-      $("s2out").appendChild(label);
-      const box = document.createElement("div");
-      $("s2out").appendChild(box);
-      for (const tok of s.tokens) {
-        const span = document.createElement("span");
-        span.className = "chip";
-        span.textContent = tok;
-        box.appendChild(span);
-        await sleep(40);
-      }
-    }
-    await sleep(900);
-
-    $("s3out").innerHTML = data.sentences.map(s =>
-      `<div class="sentlabel">Sentence ${s.index}</div><div class="raw">${esc(s.raw)}</div>`).join("");
-    $("s3").classList.add("show");
-    await sleep(1500);
-
-    $("s4out").innerHTML = "";
-    $("s4").classList.add("show");
-    if (data.triples.length === 0) {
-      $("s4out").innerHTML = '<tr><td colspan="4">No facts found. Try sentences with proper names, places or organisations.</td></tr>';
-      return;
-    }
-    for (const t of data.triples) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td class="s">${esc(t.head)}</td><td class="r">${esc(t.type)}</td><td class="o">${esc(t.tail)}</td><td class="f">Sentence ${t.sentence_index}</td>`;
-      $("s4out").appendChild(tr);
-      await sleep(450);
-    }
-    await sleep(800);
-
-    $("s5out").innerHTML = "";
-    $("s5").classList.add("show");
-    for (const s of data.sentences) {
-      const label = document.createElement("div");
-      label.className = "sentlabel";
-      label.textContent = `Sentence ${s.index}`;
-      $("s5out").appendChild(label);
-      const box = document.createElement("div");
-      $("s5out").appendChild(box);
-      if (s.entities.length === 0) {
-        box.innerHTML = '<span class="note">No named things found.</span>';
-      }
-      for (const e of s.entities) {
-        const st = TYPES[e.type] || TYPES.OTHER;
-        const span = document.createElement("span");
-        span.className = "ent";
-        span.style.background = st.bg;
-        span.style.borderColor = st.border;
-        span.appendChild(document.createTextNode(e.text));
-        const small = document.createElement("small");
-        small.textContent = st.label;
-        span.appendChild(small);
-        box.appendChild(span);
-        await sleep(250);
-      }
-    }
-    await sleep(800);
-
-    $("s6").classList.add("show");
-    renderLegend($("resultLegend"));
-    $("result").innerHTML = "";
-    const g = makeGraph($("result"));
-    
-    if (data.triples.length === 0) {
-      $("constructionBanner").textContent = "No relations found to construct graph.";
-    } else {
-      for (let i = 0; i < data.triples.length; i++) {
-        const t = data.triples[i];
-        $("constructionBanner").innerHTML = `⚡ Building Fact ${i + 1} of ${data.triples.length}: <b>${esc(t.head)}</b> ─── [${esc(t.type)}] ───► <b>${esc(t.tail)}</b>`;
-        
-        addTriple(g, t);
-
-        try {
-          g.network.focus(t.tail.toLowerCase(), { scale: 1.0, animation: { duration: 800, easingFunction: "easeInOutQuad" } });
-        } catch (err) {}
-        await sleep(1400);
-      }
-      $("constructionBanner").innerHTML = `✅ Knowledge Graph fully constructed!`;
-    }
-
-    $("s6").scrollIntoView({behavior:"smooth", block:"center"});
-  } catch (e) {
-    $("loading").style.display = "none";
-    $("error").textContent = "⚠️ " + e.message;
-    $("error").style.display = "block";
-  } finally {
-    $("go").disabled = false;
-  }
-}
-
-$("go").addEventListener("click", build);
+window.addEventListener('load',()=>{load(demo());auto();});
 </script>
 </body>
 </html>
