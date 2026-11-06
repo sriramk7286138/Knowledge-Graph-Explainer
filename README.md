@@ -1,11 +1,12 @@
 ---
 title: Knowledge Graph Explorer
 emoji: 🕸️
-colorFrom: indigo
-colorTo: purple
+colorFrom: blue
+colorTo: green
 sdk: docker
 app_port: 7860
+pinned: false
 ---
 
-# Knowledge Graph Explorer
-An interactive page that explains knowledge graphs and builds one from any sentence using the SmolLM model.
+Type a sentence and watch a knowledge graph being built, step by step.
+Uses fastino/gliner2.5-base-v1 (Hugging Face).
