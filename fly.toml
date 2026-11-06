@@ -1,14 +1,34 @@
+# fly.toml app configuration file generated for knowledge-graph-explainer on 2026-11-06T02:15:20Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'knowledge-graph-explainer'
+primary_region = 'ams'
+
+[build]
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = false
+  auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
 
-[[services.http_checks]]
-  interval = "15s"
-  timeout = "10s"
-  grace_period = "45s"
-  method = "get"
-  path = "/"
-  protocol = "http"
+[[services]]
+  protocol = ''
+  internal_port = 0
+  ports = []
+
+  [[services.http_checks]]
+    interval = '15s'
+    timeout = '10s'
+    grace_period = '45s'
+    method = 'get'
+    path = '/'
+    protocol = 'http'
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 2048
