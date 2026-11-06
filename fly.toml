@@ -1,14 +1,18 @@
-[http_service]
-  internal_port = 8080
-  force_https = true
-  auto_stop_machines = false
-  auto_start_machines = true
-  min_machines_running = 1
+# Fly.io settings. Change the app name: it must be unique on all of Fly.io.
+app = "kg-explorer-yourname"
+primary_region = "sin"   # run `fly platform regions` to see other choices
 
-[[services.http_checks]]
-  interval = "15s"
-  timeout = "10s"
-  grace_period = "45s"
-  method = "get"
-  path = "/"
-  protocol = "http"
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 7860
+  force_https = true
+  auto_stop_machines = "stop"    # switch off when nobody is using it (saves money)
+  auto_start_machines = true     # wake up on the next visit
+  min_machines_running = 0
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 2
+  memory = "2gb"
